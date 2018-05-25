@@ -19,6 +19,7 @@ public class RecordAndSerializeAudio : MonoBehaviour
     List<AudioClip> _Clips = new List<AudioClip>();
     AudioClip _RecordingClip;
 
+
     public string _NamePrefix = "AudioRecording";   
     public int _MaxClipLength = 10;  // Maximum length of audio recording
     public float _TrimCutoff = .01f;  // Minimum volume of the clip before it gets trimmed    
@@ -26,6 +27,7 @@ public class RecordAndSerializeAudio : MonoBehaviour
     bool _RecActive = false;    
 
     public bool _LoadClipsAtStart = true;
+    private string micName;
 
     // Use this for initialization
     void Start ()
@@ -34,6 +36,11 @@ public class RecordAndSerializeAudio : MonoBehaviour
         
         _PlayButton.onClick.AddListener(() => PlayRandom());
         _RecordButton.onClick.AddListener(() => RecordToggle());
+
+		if (Microphone.devices == null || Microphone.devices.Length < 1) {
+			Debug.LogError ("Microphone init error");
+		}
+		micName = Microphone.devices[0];
 
         if(_LoadClipsAtStart)
             Load();
@@ -75,7 +82,8 @@ public class RecordAndSerializeAudio : MonoBehaviour
         {
             print("Recording...");
             _RecActive = true;
-            _RecordingClip = Microphone.Start("Built-in Microphone", true, _MaxClipLength, _SampleRate);
+            _RecordingClip = Microphone.Start(micName, true, _MaxClipLength, _SampleRate);
+Debug.Log(_RecordingClip);
 
             _RecordButton.GetComponentInChildren<Text>().text = "Stop recording";
             Invoke("EndRecord", _MaxClipLength);
@@ -84,14 +92,13 @@ public class RecordAndSerializeAudio : MonoBehaviour
         {
             print("Recording stopped.");
             _RecActive = false;
-            Microphone.End("Built-in Microphone");
+            Microphone.End(micName);
 
             _RecordButton.GetComponentInChildren<Text>().text = "Record";
 
             CancelInvoke();
 
             int clipIndex = _Clips.Count;            
-
             AudioClip trimmedClip = SavWav.TrimSilence(_RecordingClip, _TrimCutoff);
 
             if(trimmedClip == null)
