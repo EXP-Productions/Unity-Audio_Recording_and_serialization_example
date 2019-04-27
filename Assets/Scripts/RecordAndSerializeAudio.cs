@@ -8,6 +8,15 @@ using System.IO;
 [RequireComponent(typeof(AudioSource))]
 public class RecordAndSerializeAudio : MonoBehaviour
 {
+    enum State
+    {
+        Idle,
+        Recording,
+        Playing,
+    }
+        
+    State _State = State.Idle;
+
     // Audio source for playing back audio
     AudioSource _AudioSource;
 
@@ -17,29 +26,47 @@ public class RecordAndSerializeAudio : MonoBehaviour
    
     // Audio clip vars
     List<AudioClip> _Clips = new List<AudioClip>();
+    // Clip that is being recorded
     AudioClip _RecordingClip;
+    // Recorind gdevice index
+    public int      _RecordingDeviceIndex = 0;
 
-    public string _NamePrefix = "AudioRecording";   
-    public int _MaxClipLength = 10;  // Maximum length of audio recording
-    public float _TrimCutoff = .01f;  // Minimum volume of the clip before it gets trimmed    
-    int _SampleRate = 44100;    // Audio sample rate
-    bool _RecActive = false;    
+    // File name prefx
+    public string   _NamePrefix = "AudioRecording";
+    // Maximum length of audio recording
+    public int      _MaxClipLength = 10;
+    // Minimum volume of the clip before it gets trimmed    
+    public float    _TrimCutoff = .01f;
+    // Audio sample rate
+    int             _SampleRate = 44100;     
 
-    public bool _LoadClipsAtStart = true;
+    public bool     _LoadClipsAtStart = true;
 
     // Use this for initialization
     void Start ()
     {
-        _AudioSource = GetComponent<AudioSource>();
+        PrintAllRecordingDevices();
+
+         // Get Audio source component
+         _AudioSource = GetComponent<AudioSource>();
         
+        // Hook up UI
         _PlayButton.onClick.AddListener(() => PlayRandom());
         _RecordButton.onClick.AddListener(() => RecordToggle());
 
         if(_LoadClipsAtStart)
-            Load();
+            LoadAllClips();
     }
 
-    void Load()
+    [ContextMenu("Print Recording Devices")]
+    void PrintAllRecordingDevices()
+    {
+        for (int i = 0; i < Microphone.devices.Length; i++)
+            print("Recorindg devices: " + Microphone.devices[i] + " " + i);
+    }
+
+    // Loads all the clips
+    void LoadAllClips()
     {
         int storedClipCount = PlayerPrefs.GetInt("storedClipCount", 0);
 
@@ -55,10 +82,16 @@ public class RecordAndSerializeAudio : MonoBehaviour
             StartCoroutine(GetAudioClip(filepath));
         }
     }
-   
 
+    // Plays a random clip
     void PlayRandom()
     {
+        if(_State == State.Recording)
+        {
+            print("Can't play a clip while recording");
+            return;
+        }
+
         print("Trying to play random...");
 
         if (_Clips.Count > 0)
@@ -69,21 +102,23 @@ public class RecordAndSerializeAudio : MonoBehaviour
         }
     }
 
+    // Record button function, starts recoridng if in idle state or stops recording if in recording state
     void RecordToggle()
     {
-        if (!_RecActive)
+        if (_State == State.Idle)
         {
             print("Recording...");
-            _RecActive = true;
-            _RecordingClip = Microphone.Start("Built-in Microphone", true, _MaxClipLength, _SampleRate);
+            _State = State.Recording;
 
+            _RecordingClip = Microphone.Start(Microphone.devices[0], true, _MaxClipLength, _SampleRate);
             _RecordButton.GetComponentInChildren<Text>().text = "Stop recording";
             Invoke("EndRecord", _MaxClipLength);
         }
-        else
+        else if(_State == State.Recording)
         {
             print("Recording stopped.");
-            _RecActive = false;
+            _State = State.Idle;
+
             Microphone.End("Built-in Microphone");
 
             _RecordButton.GetComponentInChildren<Text>().text = "Record";
