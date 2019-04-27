@@ -32,3 +32,6 @@ sysinfo.txt
 # Builds
 *.apk
 *.unitypackage
+Assets/StompyRobot
+Assets/Scripts/SROptions.cs
+Assets/Scripts/SROptions.cs.meta

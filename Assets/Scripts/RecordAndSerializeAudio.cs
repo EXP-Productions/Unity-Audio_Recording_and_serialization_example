@@ -8,6 +8,10 @@ using System.IO;
 [RequireComponent(typeof(AudioSource))]
 public class RecordAndSerializeAudio : MonoBehaviour
 {
+    public delegate void OnSave(string filePath);
+    public event OnSave onSaveEvent;   
+
+
     enum State
     {
         Idle,
@@ -41,6 +45,8 @@ public class RecordAndSerializeAudio : MonoBehaviour
     int             _SampleRate = 44100;     
 
     public bool     _LoadClipsAtStart = true;
+
+    string InputDevice { get { return Microphone.devices[0]; } }
 
     // Use this for initialization
     void Start ()
@@ -110,39 +116,48 @@ public class RecordAndSerializeAudio : MonoBehaviour
             print("Recording...");
             _State = State.Recording;
 
-            _RecordingClip = Microphone.Start(Microphone.devices[0], true, _MaxClipLength, _SampleRate);
+            _RecordingClip = Microphone.Start(InputDevice, true, _MaxClipLength, _SampleRate);
             _RecordButton.GetComponentInChildren<Text>().text = "Stop recording";
             Invoke("EndRecord", _MaxClipLength);
         }
         else if(_State == State.Recording)
         {
-            print("Recording stopped.");
-            _State = State.Idle;
-
-            Microphone.End("Built-in Microphone");
-
-            _RecordButton.GetComponentInChildren<Text>().text = "Record";
-
             CancelInvoke();
-
-            int clipIndex = _Clips.Count;            
-
-            AudioClip trimmedClip = SavWav.TrimSilence(_RecordingClip, _TrimCutoff);
-
-            if(trimmedClip == null)
-            {
-                print("Clip trimmed to 0");
-                return;
-            }          
-
-            // Add new clip to the list
-            _Clips.Add(trimmedClip);
-
-            // Save recording
-            string path = GetRecordingName(clipIndex);           
-            SavWav.Save(GetRecordingName(clipIndex), trimmedClip);
-            PlayerPrefs.SetInt("storedClipCount", _Clips.Count);
+            EndRecording();
         }
+    }
+
+    void EndRecording()
+    {
+        print("Recording stopped.");
+        _State = State.Idle;
+
+        Microphone.End(InputDevice);
+
+        _RecordButton.GetComponentInChildren<Text>().text = "Record";
+
+        CancelInvoke();
+
+        int clipIndex = _Clips.Count;
+
+        AudioClip trimmedClip = SavWav.TrimSilence(_RecordingClip, _TrimCutoff);
+
+        if (trimmedClip == null)
+        {
+            print("Clip trimmed to 0");
+            return;
+        }
+
+        // Add new clip to the list
+        _Clips.Add(trimmedClip);
+
+        // Save recording
+        string path = GetRecordingName(clipIndex);
+        SavWav.Save(path, trimmedClip);
+        PlayerPrefs.SetInt("storedClipCount", _Clips.Count);
+
+        if (onSaveEvent != null)
+            onSaveEvent(path);
     }
 
     string GetRecordingName(int index)
