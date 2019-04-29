@@ -27,6 +27,8 @@ public class TheTownVoiceMail : MonoBehaviour
     public Button _RandomizePromptButton;
 
     List<ClipPromptPair> _ClipPromptPairs = new List<ClipPromptPair>();
+    
+    string Path { get { return Application.dataPath + "TheTownVoiceMail.json"; } }
 
     int _CurrentPromptIndex = 0;
 
@@ -36,7 +38,11 @@ public class TheTownVoiceMail : MonoBehaviour
         RecordAndSerializeAudio = GetComponent<RecordAndSerializeAudio>();
         RecordAndSerializeAudio.onSaveEvent += OnSaveEventHandler;
 
-        _ClipPromptPairs = JsonSerialisationHelper.LoadFromFile<List<ClipPromptPair>>(Application.dataPath) as List<ClipPromptPair>;
+        if (System.IO.File.Exists(Path))
+        {
+            _ClipPromptPairs = JsonSerialisationHelper.LoadFromFile<List<ClipPromptPair>>(Path) as List<ClipPromptPair>;
+            print("Loaded clips prompt pairs: " + _ClipPromptPairs.Count);
+        }
 
         _RandomizePromptButton.onClick.AddListener(() => RandomizePrompt());
     }
@@ -47,13 +53,14 @@ public class TheTownVoiceMail : MonoBehaviour
     }
 
     void RandomizePrompt()
-    {
+    {       
         _CurrentPromptIndex = (int)(Random.value * _PromptQuestions.Length);
         _PromptText.text = _PromptQuestions[_CurrentPromptIndex];
+        print("Randomizing prompt: " + _PromptQuestions[_CurrentPromptIndex]);
     }
 
     private void OnApplicationQuit()
     {
-        JsonSerialisationHelper.Save(Application.dataPath, _ClipPromptPairs);
+        JsonSerialisationHelper.Save(Path, _ClipPromptPairs);
     }
 }

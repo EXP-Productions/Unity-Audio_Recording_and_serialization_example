@@ -27,7 +27,8 @@ public class RecordAndSerializeAudio : MonoBehaviour
     // UI
     public Button _PlayButton;
     public Button _RecordButton;
-   
+    public Slider _RecordTimerSlider;
+
     // Audio clip vars
     List<AudioClip> _Clips = new List<AudioClip>();
     // Clip that is being recorded
@@ -38,13 +39,15 @@ public class RecordAndSerializeAudio : MonoBehaviour
     // File name prefx
     public string   _NamePrefix = "AudioRecording";
     // Maximum length of audio recording
-    public int      _MaxClipLength = 10;
+    public int      _MaxClipDUration = 10;
     // Minimum volume of the clip before it gets trimmed    
     public float    _TrimCutoff = .01f;
     // Audio sample rate
     int             _SampleRate = 44100;     
 
     public bool     _LoadClipsAtStart = true;
+
+    float _RecordingTimer = 0;
 
     string InputDevice { get { return Microphone.devices[0]; } }
 
@@ -60,8 +63,22 @@ public class RecordAndSerializeAudio : MonoBehaviour
         _PlayButton.onClick.AddListener(() => PlayRandom());
         _RecordButton.onClick.AddListener(() => RecordToggle());
 
-        if(_LoadClipsAtStart)
+        _RecordTimerSlider.maxValue = _MaxClipDUration;
+
+        if (_LoadClipsAtStart)
             LoadAllClips();
+    }
+
+    private void Update()
+    {
+        if(_State == State.Recording)
+        {
+            _RecordingTimer += Time.deltaTime;
+            _RecordTimerSlider.value = _RecordingTimer;
+
+            if(_RecordingTimer >= _MaxClipDUration)            
+                EndRecording();
+        }
     }
 
     [ContextMenu("Print Recording Devices")]
@@ -116,13 +133,18 @@ public class RecordAndSerializeAudio : MonoBehaviour
             print("Recording...");
             _State = State.Recording;
 
-            _RecordingClip = Microphone.Start(InputDevice, true, _MaxClipLength, _SampleRate);
+            _RecordingClip = Microphone.Start(InputDevice, true, _MaxClipDUration, _SampleRate);
             _RecordButton.GetComponentInChildren<Text>().text = "Stop recording";
-            Invoke("EndRecord", _MaxClipLength);
+
+            // Update Slider
+            _RecordingTimer = 0;
+            _RecordTimerSlider.value = _RecordingTimer;
+            _RecordTimerSlider.gameObject.SetActive(true);
+
+            _PlayButton.gameObject.SetActive(false);
         }
         else if(_State == State.Recording)
-        {
-            CancelInvoke();
+        {          
             EndRecording();
         }
     }
@@ -136,8 +158,6 @@ public class RecordAndSerializeAudio : MonoBehaviour
 
         _RecordButton.GetComponentInChildren<Text>().text = "Record";
 
-        CancelInvoke();
-
         int clipIndex = _Clips.Count;
 
         AudioClip trimmedClip = SavWav.TrimSilence(_RecordingClip, _TrimCutoff);
@@ -150,6 +170,13 @@ public class RecordAndSerializeAudio : MonoBehaviour
 
         // Add new clip to the list
         _Clips.Add(trimmedClip);
+
+        // Update Slider
+        _RecordingTimer = 0;
+        _RecordTimerSlider.value = _RecordingTimer;
+        _RecordTimerSlider.gameObject.SetActive(false);
+
+        _PlayButton.gameObject.SetActive(true);
 
         // Save recording
         string path = GetRecordingName(clipIndex);

@@ -4,4 +4,8 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/RecordAndSerializeAudio.unity
+    guid: 04e2ca2a1b2be53409c675bd5909b06d
+  m_configObjects: {}
