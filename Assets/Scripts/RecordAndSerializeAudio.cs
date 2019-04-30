@@ -4,14 +4,30 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Networking;
 using System.IO;
+using Newtonsoft.Json;
+
+
+class ClipPromptPair
+{
+    public string _ClipPath;
+    public string _Prompt;
+
+    public ClipPromptPair(string clipPath, string prompt)
+    {
+        _ClipPath = clipPath;
+        _Prompt = prompt;
+    }
+}
 
 [RequireComponent(typeof(AudioSource))]
 public class RecordAndSerializeAudio : MonoBehaviour
 {
     public delegate void OnSave(string filePath);
-    public event OnSave onSaveEvent;   
+    public event OnSave onSaveEvent;
 
-
+    public delegate void OnPlayClip(int index);
+    public event OnPlayClip onOnPlayClip;
+    
     enum State
     {
         Idle,
@@ -19,38 +35,51 @@ public class RecordAndSerializeAudio : MonoBehaviour
         Playing,
     }
         
-    State _State = State.Idle;
-
-    // Audio source for playing back audio
+    State _State = State.Idle;  
     AudioSource _AudioSource;
-
-    // UI
+    float _Timer = 0;
+    
+    #region UI
+    [Header("UI")]
     public Button _PlayButton;
     public Button _RecordButton;
-    public Slider _RecordTimerSlider;
+    public Image _PlaybackRadial;
+    public Image _RecordRadial;
 
+    public Text _PromptText;
+    public Button _RandomizePromptButton;
+    #endregion
+    
+    #region AUDIO VARS
     // Audio clip vars
+    [Header("Audio")]
+    // Recorind gdevice index
+    public int _RecordingDeviceIndex = 0;
     List<AudioClip> _Clips = new List<AudioClip>();
     // Clip that is being recorded
-    AudioClip _RecordingClip;
-    // Recorind gdevice index
-    public int      _RecordingDeviceIndex = 0;
-
-    // File name prefx
-    public string   _NamePrefix = "AudioRecording";
+    AudioClip       _RecordingClip;
+    string InputDevice { get { return Microphone.devices[0]; } }
     // Maximum length of audio recording
-    public int      _MaxClipDUration = 10;
+    public int      _MaxClipDuration = 10;
     // Minimum volume of the clip before it gets trimmed    
     public float    _TrimCutoff = .01f;
     // Audio sample rate
-    int             _SampleRate = 44100;     
+    int             _SampleRate = 44100;
+    #endregion
 
+    #region SERIALIZATION
+    public string   _NamePrefix = "AudioRecording";
     public bool     _LoadClipsAtStart = true;
+    List<ClipPromptPair> _ClipPromptPairs = new List<ClipPromptPair>();
+    string JSONSavePath { get { return Application.dataPath + "TheTownVoiceMail.json"; } }
+    #endregion
 
-    float _RecordingTimer = 0;
-
-    string InputDevice { get { return Microphone.devices[0]; } }
-
+    #region PROMPTS
+    [Header("Prompts")]
+    public string[] _PromptQuestions;
+    int _CurrentPromptIndex = 0;
+    #endregion
+   
     // Use this for initialization
     void Start ()
     {
@@ -60,27 +89,24 @@ public class RecordAndSerializeAudio : MonoBehaviour
          _AudioSource = GetComponent<AudioSource>();
         
         // Hook up UI
-        _PlayButton.onClick.AddListener(() => PlayRandom());
+        _PlayButton.onClick.AddListener(() => SetState(State.Playing));
         _RecordButton.onClick.AddListener(() => RecordToggle());
 
-        _RecordTimerSlider.maxValue = _MaxClipDUration;
+        _PlaybackRadial.fillAmount = 0;
+        _RecordRadial.fillAmount = 0;
+
+        if (System.IO.File.Exists(JSONSavePath))
+        {
+            _ClipPromptPairs = JsonSerialisationHelper.LoadFromFile<List<ClipPromptPair>>(JSONSavePath) as List<ClipPromptPair>;
+            print("Loaded clips prompt pairs: " + _ClipPromptPairs.Count);
+        }
+
+        _RandomizePromptButton.onClick.AddListener(() => RandomizePrompt());
 
         if (_LoadClipsAtStart)
             LoadAllClips();
     }
-
-    private void Update()
-    {
-        if(_State == State.Recording)
-        {
-            _RecordingTimer += Time.deltaTime;
-            _RecordTimerSlider.value = _RecordingTimer;
-
-            if(_RecordingTimer >= _MaxClipDUration)            
-                EndRecording();
-        }
-    }
-
+    
     [ContextMenu("Print Recording Devices")]
     void PrintAllRecordingDevices()
     {
@@ -99,67 +125,90 @@ public class RecordAndSerializeAudio : MonoBehaviour
         {
             string path = GetRecordingName(i);
             var filepath = Path.Combine(Application.persistentDataPath, path);
-            filepath = "file:///" + filepath;           
+            filepath = "file:///" + filepath;
 
             // Starts coroutine that adds clip to the list if completeed successfully
             StartCoroutine(GetAudioClip(filepath));
         }
     }
-
-    // Plays a random clip
-    void PlayRandom()
+    
+    private void Update()
     {
         if(_State == State.Recording)
         {
-            print("Can't play a clip while recording");
-            return;
+            _Timer += Time.deltaTime;
+            _RecordRadial.fillAmount = _Timer / _MaxClipDuration;
+
+            if (_Timer >= _MaxClipDuration)
+                SetState(State.Idle);
         }
-
-        print("Trying to play random...");
-
-        if (_Clips.Count > 0)
+        else if(_State == State.Playing)
         {
-            print("Playing random...");
-            _AudioSource.clip = _Clips[Random.Range(0, _Clips.Count)];
-            _AudioSource.Play();            
+            _Timer += Time.deltaTime;
+            _PlaybackRadial.fillAmount = _Timer / _AudioSource.clip.length;
+
+            if (_Timer>= _AudioSource.clip.length)
+                SetState(State.Idle);
         }
     }
+
+    void SetState(State state)
+    {
+        if(state == State.Idle)
+        {
+            if (_State == State.Recording)
+                EndRecording();
+
+            _PlayButton.interactable = true;
+            _PlaybackRadial.fillAmount = 0;
+
+            _RecordButton.interactable = true;
+            _RecordButton.GetComponentInChildren<Text>().text = "rec msg";
+            _RecordRadial.fillAmount = 0;
+        }
+        else if(state == State.Recording)
+        {
+            _PlayButton.interactable = false;
+            _RecordButton.GetComponentInChildren<Text>().text = "End rec";
+            _Timer = 0;
+
+            _RecordingClip = Microphone.Start(InputDevice, true, _MaxClipDuration, _SampleRate);           
+        }
+        else if (state == State.Playing)
+        {
+            if (_Clips.Count == 0)
+                return;
+
+            _RecordButton.interactable = false;
+            _Timer = 0;
+            int index = Random.Range(0, _Clips.Count);
+            _AudioSource.clip = _Clips[index];
+            _AudioSource.Play();
+
+            if (onOnPlayClip != null)
+                onOnPlayClip(index);
+        }
+
+        _State = state;
+        print("State: " + _State.ToString());       
+    }    
 
     // Record button function, starts recoridng if in idle state or stops recording if in recording state
     void RecordToggle()
     {
-        if (_State == State.Idle)
-        {
-            print("Recording...");
-            _State = State.Recording;
-
-            _RecordingClip = Microphone.Start(InputDevice, true, _MaxClipDUration, _SampleRate);
-            _RecordButton.GetComponentInChildren<Text>().text = "Stop recording";
-
-            // Update Slider
-            _RecordingTimer = 0;
-            _RecordTimerSlider.value = _RecordingTimer;
-            _RecordTimerSlider.gameObject.SetActive(true);
-
-            _PlayButton.gameObject.SetActive(false);
-        }
+        if (_State == State.Idle)        
+            SetState(State.Recording);
         else if(_State == State.Recording)
-        {          
-            EndRecording();
-        }
+            SetState(State.Idle);
     }
 
     void EndRecording()
     {
         print("Recording stopped.");
-        _State = State.Idle;
-
+       
         Microphone.End(InputDevice);
 
-        _RecordButton.GetComponentInChildren<Text>().text = "Record";
-
         int clipIndex = _Clips.Count;
-
         AudioClip trimmedClip = SavWav.TrimSilence(_RecordingClip, _TrimCutoff);
 
         if (trimmedClip == null)
@@ -171,20 +220,23 @@ public class RecordAndSerializeAudio : MonoBehaviour
         // Add new clip to the list
         _Clips.Add(trimmedClip);
 
-        // Update Slider
-        _RecordingTimer = 0;
-        _RecordTimerSlider.value = _RecordingTimer;
-        _RecordTimerSlider.gameObject.SetActive(false);
-
-        _PlayButton.gameObject.SetActive(true);
-
         // Save recording
-        string path = GetRecordingName(clipIndex);
-        SavWav.Save(path, trimmedClip);
-        PlayerPrefs.SetInt("storedClipCount", _Clips.Count);
+        string audioFilePath = GetRecordingName(clipIndex);
+        SavWav.Save(audioFilePath, trimmedClip);
 
-        if (onSaveEvent != null)
-            onSaveEvent(path);
+        _ClipPromptPairs.Add(new ClipPromptPair(audioFilePath, _PromptQuestions[_CurrentPromptIndex]));
+    }
+    
+    void RandomizePrompt()
+    {
+        _CurrentPromptIndex = (int)(Random.value * _PromptQuestions.Length);
+        _PromptText.text = _PromptQuestions[_CurrentPromptIndex];
+        print("Randomizing prompt: " + _PromptQuestions[_CurrentPromptIndex]);
+    }
+
+    private void OnApplicationQuit()
+    {
+        JsonSerialisationHelper.Save(JSONSavePath, _ClipPromptPairs);
     }
 
     string GetRecordingName(int index)
