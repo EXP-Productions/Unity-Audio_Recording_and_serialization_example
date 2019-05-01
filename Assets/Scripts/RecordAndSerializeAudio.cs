@@ -110,13 +110,20 @@ public class RecordAndSerializeAudio : MonoBehaviour
 
         if (_LoadClipsAtStart)
         {
+            print("Loading all clips...");
             if (System.IO.File.Exists(JSONDBInfoPath))
-                _DataBaseVersionNumber = int.Parse(JsonSerialisationHelper.LoadFromFile<string>(JSONDBInfoPath) as string);
+                _DataBaseVersionNumber = PlayerPrefs.GetInt("_DataBaseVersionNumber");
+
+            print("DB ID: " + _DataBaseVersionNumber);
 
             if (System.IO.File.Exists(JSONClipDBPath))
-            {                
+            {
                 _ClipPromptPairs =  JsonSerialisationHelper.LoadFromFile<List<ClipPromptPair>>(JSONClipDBPath) as List<ClipPromptPair>;
                 print("Loaded clips prompt pairs: " + _ClipPromptPairs.Count);
+            }
+            else
+            {
+                print("Can't find JSON clip pair file");
             }
 
             for (int i = 0; i < _ClipPromptPairs.Count; i++)
@@ -179,13 +186,15 @@ public class RecordAndSerializeAudio : MonoBehaviour
 
             _Timer = 0;
             _SelectedClipPromptPairIndex = Random.Range(0, _ClipPromptPairs.Count);
+            print("Playing clip par at index: " + _SelectedClipPromptPairIndex);
+
             _AudioSource.clip = _ClipPromptPairs[_SelectedClipPromptPairIndex]._Clip;
             _AudioSource.Play();
 
             // UI
             _RecordButton.interactable = false;
             _CurrentPromptIndex = _SelectedClipPromptPairIndex;
-            _PromptText.text = _PromptQuestions[_CurrentPromptIndex];
+            _PromptText.text = _ClipPromptPairs[_SelectedClipPromptPairIndex]._Prompt;
         }
 
         _State = state;
@@ -238,13 +247,13 @@ public class RecordAndSerializeAudio : MonoBehaviour
         //_Clips.Clear();
 
         _DataBaseVersionNumber++;
-        JsonSerialisationHelper.Save(JSONDBInfoPath, _DataBaseVersionNumber);
+        PlayerPrefs.SetInt("_DataBaseVersionNumber", _DataBaseVersionNumber);
         JsonSerialisationHelper.Save(JSONClipDBPath, _ClipPromptPairs);
     }
 
     private void OnApplicationQuit()
     {
-        JsonSerialisationHelper.Save(JSONDBInfoPath, _DataBaseVersionNumber);
+        PlayerPrefs.SetInt("_DataBaseVersionNumber", _DataBaseVersionNumber);
         JsonSerialisationHelper.Save(JSONClipDBPath, _ClipPromptPairs);
     }
 
