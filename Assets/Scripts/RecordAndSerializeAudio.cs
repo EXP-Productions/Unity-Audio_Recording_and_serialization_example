@@ -58,6 +58,10 @@ public class RecordAndSerializeAudio : MonoBehaviour
 
     public Text _PromptText;
     public Button _RandomizePromptButton;
+
+    public RectTransform _ReelPanel;
+    Vector2 _ReelXPosRange = new Vector2(-50, 50);
+    public RectTransform[] _Reels;
     #endregion
     
     #region AUDIO VARS
@@ -92,6 +96,8 @@ public class RecordAndSerializeAudio : MonoBehaviour
     public string[] _PromptQuestions;
     int _CurrentPromptIndex = 0;
     #endregion
+
+
    
     // Use this for initialization
     void Start ()
@@ -144,6 +150,8 @@ public class RecordAndSerializeAudio : MonoBehaviour
             _Timer += Time.deltaTime;
             _RecordRadial.fillAmount = _Timer / _MaxClipDuration;
 
+            UpdateReels(_Timer / _MaxClipDuration);
+
             if (_Timer >= _MaxClipDuration)
                 SetState(State.Idle);
         }
@@ -151,6 +159,8 @@ public class RecordAndSerializeAudio : MonoBehaviour
         {
             _Timer += Time.deltaTime;
             _PlaybackRadial.fillAmount = _Timer / _AudioSource.clip.length;
+
+            UpdateReels(_Timer / _AudioSource.clip.length);
 
             if (_Timer>= _AudioSource.clip.length)
                 SetState(State.Idle);
@@ -200,6 +210,14 @@ public class RecordAndSerializeAudio : MonoBehaviour
         _State = state;
         print("State: " + _State.ToString());       
     }    
+
+    void UpdateReels(float norm)
+    {
+        foreach (RectTransform rt in _Reels)
+            rt.Rotate(0, 0, Time.deltaTime * 180);
+
+        _ReelPanel.localPosition = new Vector3(_ReelXPosRange.x + (norm * (_ReelXPosRange.y - _ReelXPosRange.x)), 0, 0);
+    }
 
     // Record button function, starts recoridng if in idle state or stops recording if in recording state
     void RecordToggle()
